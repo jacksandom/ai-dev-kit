@@ -26,6 +26,7 @@ cp -r ai-dev-kit/databricks-skills/agent-bricks .claude/skills/
 - **mlflow-evaluation** - Model evaluation, scoring, trace analysis
 - **model-serving** - Deploy MLflow models and AI agents to endpoints
 - **unstructured-pdf-generation** - Generate synthetic PDFs for RAG
+- **vector-search** - Vector similarity search for RAG and semantic search
 
 ### 📊 Analytics & Dashboards
 - **aibi-dashboards** - AI/BI dashboards (with SQL validation workflow)

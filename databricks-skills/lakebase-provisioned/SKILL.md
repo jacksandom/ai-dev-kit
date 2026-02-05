@@ -256,7 +256,7 @@ databricks database start-database-instance --name my-lakebase-instance
 
 | Issue | Solution |
 |-------|----------|
-| **Token expired during long query** | Implement token refresh loop (see Pattern 3); tokens expire after 1 hour |
+| **Token expired during long query** | Implement token refresh loop (see SQLAlchemy with Token Refresh section); tokens expire after 1 hour |
 | **DNS resolution fails on macOS** | Use `dig` command to resolve hostname, pass `hostaddr` to psycopg |
 | **Connection refused** | Ensure instance is not stopped; check `instance.state` |
 | **Permission denied** | User must be granted access to the Lakebase instance |
