@@ -415,7 +415,7 @@ def execute_databricks_command(
 
         return result
 
-    except Exception as e:
+    except Exception:
         # If we created the context and there's an error, clean up
         if context_created and destroy_context_on_completion:
             try:

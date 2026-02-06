@@ -274,7 +274,7 @@ class SQLDependencyAnalyzer:
             name = table_exp.name or ""
             return name.strip("`\"").lower() or None
         if hasattr(table_exp, "name"):
-            name = getattr(table_exp, "name")
+            name = table_exp.name
             if isinstance(name, str):
                 return name.strip("`\"").lower() or None
         if hasattr(table_exp, "this") and isinstance(table_exp.this, exp.Table):

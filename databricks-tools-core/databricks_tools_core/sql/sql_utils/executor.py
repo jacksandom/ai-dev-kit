@@ -19,7 +19,6 @@ class SQLExecutionError(Exception):
 
     Provides detailed error messages for LLM consumption.
     """
-    pass
 
 
 class SQLExecutor:
