@@ -60,10 +60,17 @@ def execute_databricks_command(
     By default, the context is kept alive for reuse. Set destroy_context_on_completion=True
     to destroy it after execution.
 
+    If no cluster_id is provided and no accessible running cluster is found,
+    returns an error with actionable suggestions including:
+    - startable_clusters: terminated clusters the user can start
+    - suggestions: specific actions the agent/user can take
+    - For SQL workloads, consider using execute_sql() instead (no cluster needed)
+
     Args:
         code: Code to execute
         cluster_id: ID of the cluster to run on. If not provided, auto-selects
-                   a running cluster (prefers clusters with "shared" or "demo" in name).
+                   a running cluster accessible to the current user.
+                   Single-user clusters owned by other users are automatically skipped.
         context_id: Optional existing execution context ID. If provided, reuses it
                    for faster execution and state preservation (variables, imports).
         language: Programming language ("python", "scala", "sql", "r")
@@ -106,6 +113,9 @@ def execute_databricks_command(
             "context_id": None,
             "context_destroyed": True,
             "message": None,
+            "suggestions": e.suggestions,
+            "startable_clusters": e.startable_clusters,
+            "skipped_clusters": e.skipped_clusters,
             "available_clusters": e.available_clusters,
         }
 
@@ -126,10 +136,14 @@ def run_python_file_on_databricks(
     If context_id is provided, reuses the existing context (faster, maintains state).
     If not provided, creates a new context.
 
+    If no cluster_id is provided and no accessible running cluster is found,
+    returns an error with actionable suggestions (startable clusters, alternatives).
+
     Args:
         file_path: Local path to the Python file
         cluster_id: ID of the cluster to run on. If not provided, auto-selects
-                   a running cluster (prefers clusters with "shared" or "demo" in name).
+                   a running cluster accessible to the current user.
+                   Single-user clusters owned by other users are automatically skipped.
         context_id: Optional existing execution context ID. If provided, reuses it
                    for faster execution and state preservation.
         timeout: Maximum wait time in seconds (default: 600)
@@ -170,5 +184,8 @@ def run_python_file_on_databricks(
             "context_id": None,
             "context_destroyed": True,
             "message": None,
+            "suggestions": e.suggestions,
+            "startable_clusters": e.startable_clusters,
+            "skipped_clusters": e.skipped_clusters,
             "available_clusters": e.available_clusters,
         }
