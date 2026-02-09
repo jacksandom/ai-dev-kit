@@ -61,7 +61,6 @@ df.writeStream \
 | Topic | Description | Reference |
 |-------|-------------|-----------|
 | **Error Handling** | Recovery patterns, dead letter queues | See [error-handling-recovery.md](error-handling-recovery.md) |
-| **Late Data** | Handling late-arriving events | See [late-data-handling.md](late-data-handling.md) |
 
 ## Best Practices
 
