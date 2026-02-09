@@ -53,7 +53,6 @@ df.writeStream \
 
 | Topic | Description | Reference |
 |-------|-------------|-----------|
-| **Partitioning** | Partitioning strategies, Liquid Clustering | See [partitioning-strategy.md](partitioning-strategy.md) |
 | **Cost Tuning** | Scheduled streaming, cluster sizing | See [cost-tuning.md](cost-tuning.md) |
 | **Deduplication** | Streaming deduplication at scale | See [streaming-deduplication-scale.md](streaming-deduplication-scale.md) |
 
@@ -61,15 +60,8 @@ df.writeStream \
 
 | Topic | Description | Reference |
 |-------|-------------|-----------|
-| **Monitoring** | Observability, metrics, Spark UI | See [monitoring-observability.md](monitoring-observability.md) |
 | **Error Handling** | Recovery patterns, dead letter queues | See [error-handling-recovery.md](error-handling-recovery.md) |
 | **Late Data** | Handling late-arriving events | See [late-data-handling.md](late-data-handling.md) |
-
-## Ingestion
-
-| Topic | Description | Reference |
-|-------|-------------|-----------|
-| **Auto Loader** | Schema evolution, file ingestion | See [auto-loader-schema-drift.md](auto-loader-schema-drift.md) |
 
 ## Best Practices
 
