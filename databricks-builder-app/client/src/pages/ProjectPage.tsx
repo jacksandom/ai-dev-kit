@@ -29,6 +29,7 @@ import {
   fetchWarehouses,
   invokeAgent,
   reconnectToExecution,
+  stopExecution,
 } from '@/lib/api';
 import type { Cluster, Conversation, Message, Project, Warehouse, TodoItem } from '@/lib/types';
 import { cn } from '@/lib/utils';
@@ -443,6 +444,7 @@ export default function ProjectPage() {
         workspaceFolder,
         mlflowExperimentName: mlflowExperimentName || null,
         signal: abortControllerRef.current.signal,
+        onExecutionId: (executionId) => setActiveExecutionId(executionId),
         onEvent: (event) => {
           const type = event.type as string;
 
@@ -580,6 +582,7 @@ export default function ProjectPage() {
           }
           setStreamingText('');
           setIsStreaming(false);
+          setActiveExecutionId(null);
           // Clear activity items after response is finalized - only show final answer
           setActivityItems([]);
           setTodos([]);
@@ -591,15 +594,52 @@ export default function ProjectPage() {
         },
       });
     } catch (error) {
+      // Ignore AbortError — handleStopGeneration handles cleanup for user-initiated stops
+      if (error instanceof Error && error.name === 'AbortError') return;
       console.error('Failed to send message:', error);
-      // Show the actual error message instead of generic text
       const errorMessage = error instanceof Error ? error.message : 'Failed to send message';
       toast.error(errorMessage, {
-        duration: 8000, // Show error for 8 seconds
+        duration: 8000,
       });
       setIsStreaming(false);
     }
   }, [projectId, input, isStreaming, currentConversation?.id, selectedClusterId, defaultCatalog, defaultSchema, selectedWarehouseId, workspaceFolder, mlflowExperimentName]);
+
+  // Stop generation - abort client stream AND tell backend to cancel
+  const handleStopGeneration = useCallback(async () => {
+    abortControllerRef.current?.abort();
+
+    // Tell the backend to cancel the agent execution
+    if (activeExecutionId) {
+      try {
+        await stopExecution(activeExecutionId);
+      } catch (error) {
+        console.error('Failed to stop execution on backend:', error);
+      }
+    }
+
+    // Finalize UI: keep user message and save whatever partial response we have
+    setStreamingText((currentText) => {
+      if (currentText) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `msg-stopped-${Date.now()}`,
+            conversation_id: '',
+            role: 'assistant' as const,
+            content: currentText,
+            timestamp: new Date().toISOString(),
+            is_error: false,
+          },
+        ]);
+      }
+      return '';
+    });
+    setIsStreaming(false);
+    setActiveExecutionId(null);
+    setActivityItems([]);
+    setTodos([]);
+  }, [activeExecutionId]);
 
   // Handle keyboard submit
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -992,7 +1032,7 @@ export default function ProjectPage() {
               />
               {isStreaming ? (
                 <Button
-                  onClick={() => abortControllerRef.current?.abort()}
+                  onClick={handleStopGeneration}
                   className="h-12 w-12 rounded-xl bg-[var(--color-destructive)] hover:bg-[var(--color-destructive)]/90"
                   title="Stop generation"
                 >

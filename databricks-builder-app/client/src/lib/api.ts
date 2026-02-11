@@ -118,6 +118,7 @@ export interface InvokeAgentParams {
   onEvent: (event: Record<string, unknown>) => void;
   onError: (error: Error) => void;
   onDone: () => void | Promise<void>;
+  onExecutionId?: (executionId: string) => void;
 }
 
 export async function invokeAgent(params: InvokeAgentParams): Promise<void> {
@@ -135,6 +136,7 @@ export async function invokeAgent(params: InvokeAgentParams): Promise<void> {
     onEvent,
     onError,
     onDone,
+    onExecutionId,
   } = params;
 
   const res = await request<{ execution_id: string; conversation_id: string }>('/invoke_agent', {
@@ -151,6 +153,8 @@ export async function invokeAgent(params: InvokeAgentParams): Promise<void> {
       mlflow_experiment_name: mlflowExperimentName ?? null,
     },
   });
+
+  onExecutionId?.(res.execution_id);
 
   await streamProgress({
     executionId: res.execution_id,
@@ -219,32 +223,33 @@ async function streamProgress(params: {
   while (true) {
     if (signal?.aborted) return;
 
-    const res = await fetch(`${API_BASE}/stream_progress/${executionId}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ last_event_timestamp: lastTs }),
-      signal,
-    });
-
-    if (!res.ok) {
-      const errBody = await res.json().catch(() => ({}));
-      const message = (errBody.detail ?? res.statusText) as string;
-      onError(new Error(typeof message === 'string' ? message : JSON.stringify(message)));
-      return;
-    }
-
-    const reader = res.body?.getReader();
-    if (!reader) {
-      onError(new Error('No response body'));
-      return;
-    }
-
-    const decoder = new TextDecoder();
-    let buffer = '';
     let shouldReconnect = false;
 
     try {
+      const res = await fetch(`${API_BASE}/stream_progress/${executionId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ last_event_timestamp: lastTs }),
+        signal,
+      });
+
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        const message = (errBody.detail ?? res.statusText) as string;
+        onError(new Error(typeof message === 'string' ? message : JSON.stringify(message)));
+        return;
+      }
+
+      const reader = res.body?.getReader();
+      if (!reader) {
+        onError(new Error('No response body'));
+        return;
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
       while (true) {
         if (signal?.aborted) return;
         const { done, value } = await reader.read();
@@ -289,6 +294,14 @@ async function streamProgress(params: {
       return;
     }
   }
+}
+
+// --- Stop execution ---
+
+export async function stopExecution(executionId: string): Promise<{ success: boolean; message: string }> {
+  return request<{ success: boolean; message: string }>(`/stop_stream/${executionId}`, {
+    method: 'POST',
+  });
 }
 
 // --- Executions ---
