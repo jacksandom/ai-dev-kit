@@ -301,21 +301,31 @@ class NoRunningClusterError(Exception):
         """Build a list of actionable suggestions based on available resources."""
         suggestions = []
 
-        # Suggestion 1: start a terminated cluster the user owns
-        for c in self.startable_clusters[:3]:
+        # Suggestion 1: offer to start a terminated cluster (agent should ask user first)
+        if self.startable_clusters:
+            best = self.startable_clusters[0]
             suggestions.append(
-                f"Start '{c['cluster_name']}' from the Databricks UI, then retry with "
-                f"cluster_id='{c['cluster_id']}'"
+                f"ASK THE USER: \"I found your terminated cluster '{best['cluster_name']}'. "
+                f"Would you like me to start it? (It typically takes 3-8 minutes to start.)\". "
+                f"If they approve, call start_cluster(cluster_id='{best['cluster_id']}'), "
+                f"then poll with get_cluster_status() until it's RUNNING, then retry."
             )
+            # Show additional options if there are more
+            for c in self.startable_clusters[1:3]:
+                suggestions.append(
+                    f"Alternative cluster: '{c['cluster_name']}' "
+                    f"(cluster_id='{c['cluster_id']}', state={c['state']})"
+                )
 
         # Suggestion 2: use execute_sql for SQL workloads
         suggestions.append(
-            "Use execute_sql() for SQL workloads (routes through SQL warehouses, no cluster needed)"
+            "For SQL-only workloads, use execute_sql() instead — it routes through "
+            "SQL warehouses and doesn't require a cluster."
         )
 
         # Suggestion 3: ask for shared access
         suggestions.append(
-            "Ask a workspace admin for access to a shared cluster"
+            "Ask a workspace admin for access to a shared cluster."
         )
 
         return suggestions
@@ -349,6 +359,106 @@ class NoRunningClusterError(Exception):
             message += f"  {i}. {suggestion}\n"
 
         return message
+
+
+def start_cluster(cluster_id: str) -> Dict[str, Any]:
+    """
+    Start a terminated Databricks cluster.
+
+    This initiates the cluster start process and returns immediately — it does
+    NOT wait for the cluster to reach RUNNING state (that typically takes 3-8
+    minutes).  Use ``get_cluster_status()`` to poll until the cluster is ready.
+
+    Args:
+        cluster_id: ID of the cluster to start.
+
+    Returns:
+        Dictionary with cluster_id, cluster_name, state, and a message.
+
+    Raises:
+        Exception: If the cluster cannot be started (e.g., permissions, not found).
+    """
+    w = get_workspace_client()
+
+    # Get cluster info first for a better response message
+    cluster = w.clusters.get(cluster_id)
+    cluster_name = cluster.cluster_name or cluster_id
+    current_state = cluster.state.value if cluster.state else "UNKNOWN"
+
+    if current_state == "RUNNING":
+        return {
+            "cluster_id": cluster_id,
+            "cluster_name": cluster_name,
+            "state": "RUNNING",
+            "message": f"Cluster '{cluster_name}' is already running.",
+        }
+
+    if current_state not in ("TERMINATED", "ERROR"):
+        return {
+            "cluster_id": cluster_id,
+            "cluster_name": cluster_name,
+            "state": current_state,
+            "message": (
+                f"Cluster '{cluster_name}' is in state {current_state}. "
+                f"It may already be starting or resizing."
+            ),
+        }
+
+    # Kick off start (non-blocking)
+    w.clusters.start(cluster_id)
+
+    return {
+        "cluster_id": cluster_id,
+        "cluster_name": cluster_name,
+        "previous_state": current_state,
+        "state": "PENDING",
+        "message": (
+            f"Cluster '{cluster_name}' is now starting. "
+            f"This typically takes 3-8 minutes. "
+            f"Use get_cluster_status(cluster_id='{cluster_id}') to check progress."
+        ),
+    }
+
+
+def get_cluster_status(cluster_id: str) -> Dict[str, Any]:
+    """
+    Get the current status of a Databricks cluster.
+
+    Useful for polling a cluster after calling ``start_cluster()`` to check
+    whether it has reached RUNNING state.
+
+    Args:
+        cluster_id: ID of the cluster.
+
+    Returns:
+        Dictionary with cluster_id, cluster_name, state, and a message.
+    """
+    w = get_workspace_client()
+    cluster = w.clusters.get(cluster_id)
+
+    cluster_name = cluster.cluster_name or cluster_id
+    state = cluster.state.value if cluster.state else "UNKNOWN"
+
+    if state == "RUNNING":
+        message = f"Cluster '{cluster_name}' is running and ready for use."
+    elif state in ("PENDING", "RESTARTING", "RESIZING"):
+        message = (
+            f"Cluster '{cluster_name}' is {state.lower()}. "
+            f"Please wait and check again in 30-60 seconds."
+        )
+    elif state == "TERMINATED":
+        message = f"Cluster '{cluster_name}' is terminated."
+    elif state == "TERMINATING":
+        message = f"Cluster '{cluster_name}' is shutting down."
+    else:
+        message = f"Cluster '{cluster_name}' is in state: {state}."
+
+    return {
+        "cluster_id": cluster_id,
+        "cluster_name": cluster_name,
+        "state": state,
+        "message": message,
+    }
 
 
 def create_context(cluster_id: str, language: str = "python") -> str:
