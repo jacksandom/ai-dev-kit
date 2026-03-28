@@ -254,6 +254,41 @@ test_cases:
       reasoning: "'fastapi react' triggers APX, bare 'fastapi' also triggers app-python. Router picks best fit."
 
   # No skill match
+  # Single-skill routing - R to PySpark
+  - id: "routing_r2pyspark_001"
+    inputs:
+      prompt: "Convert this R dplyr code to PySpark"
+    expectations:
+      expected_skills: ["r-to-pyspark"]
+      is_multi_skill: false
+    metadata:
+      category: "single_skill"
+      difficulty: "easy"
+      reasoning: "Explicit R to PySpark conversion request"
+
+  - id: "routing_r2pyspark_002"
+    inputs:
+      prompt: "I have an R script using tidyverse that I need to migrate to Databricks"
+    expectations:
+      expected_skills: ["r-to-pyspark"]
+      is_multi_skill: false
+    metadata:
+      category: "single_skill"
+      difficulty: "medium"
+      reasoning: "R + tidyverse + Databricks migration implies R to PySpark conversion"
+
+  - id: "routing_r2pyspark_003"
+    inputs:
+      prompt: "How do I replace my ggplot2 visualization with something that works in a Databricks notebook?"
+    expectations:
+      expected_skills: ["r-to-pyspark"]
+      is_multi_skill: false
+    metadata:
+      category: "single_skill"
+      difficulty: "medium"
+      reasoning: "ggplot2 replacement for Databricks implies R to PySpark migration"
+
+  # No skill match
   - id: "routing_no_match_001"
     inputs:
       prompt: "What is the weather like today?"

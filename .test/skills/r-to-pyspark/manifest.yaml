@@ -1,0 +1,35 @@
+skill_name: r-to-pyspark
+tool_modules: [python]
+description: 'Converts R code (dplyr, tidyr, ggplot2, data.table, base R) to idiomatic PySpark for Databricks. Use when migrating
+  R scripts, translating R data manipulation to PySpark DataFrames, or replacing R workloads with serverless-compatible PySpark.'
+scorers:
+  enabled:
+  - python_syntax
+  - pattern_adherence
+  - no_hallucinated_apis
+  - expected_facts_present
+  llm_scorers:
+  - Safety
+  - guidelines_from_expectations
+  default_guidelines:
+  - Response must produce PySpark DataFrame API code, not pandas or base Python
+  - Must use F.col() or equivalent column expressions in transformations
+  - Must use Unity Catalog three-level namespace (catalog.schema.table) for table references
+  - Must import pyspark.sql.functions as F
+  - Must use modern PySpark APIs (not deprecated ones)
+  - Must prefer native PySpark functions over UDFs when possible
+  - Code examples must follow documented best practices
+  trace_expectations:
+    tool_limits:
+      Bash: 10
+      Read: 20
+    token_budget:
+      max_total: 100000
+    required_tools:
+    - Read
+    banned_tools: []
+    expected_files: []
+quality_gates:
+  syntax_valid: 1.0
+  pattern_adherence: 0.9
+  execution_success: 0.8

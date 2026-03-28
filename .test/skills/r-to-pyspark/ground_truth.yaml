@@ -1,0 +1,750 @@
+metadata:
+  skill_name: r-to-pyspark
+  version: 0.1.0
+  created_at: '2026-03-28T00:00:00.000000'
+test_cases:
+- id: r2pyspark_dplyr_chain_001
+  inputs:
+    prompt: |
+      Convert this R dplyr code to PySpark:
+      ```r
+      library(dplyr)
+      result <- sales_df %>%
+        filter(status == "completed", amount > 50) %>%
+        select(order_id, customer_id, amount, region) %>%
+        mutate(amount_with_tax = amount * 1.08) %>%
+        arrange(desc(amount_with_tax))
+      ```
+  outputs:
+    response: |
+      ```python
+      from pyspark.sql import functions as F
+
+      result = (
+          sales_df
+          .filter((F.col("status") == "completed") & (F.col("amount") > 50))
+          .select("order_id", "customer_id", "amount", "region")
+          .withColumn("amount_with_tax", F.col("amount") * 1.08)
+          .orderBy(F.col("amount_with_tax").desc())
+      )
+
+      display(result)
+      ```
+    execution_success: true
+  expectations:
+    expected_facts:
+    - Pipe operator maps to method chaining
+    - filter with multiple conditions uses & operator with parentheses
+    - mutate maps to withColumn
+    - arrange(desc()) maps to orderBy with .desc()
+    expected_patterns:
+    - pattern: from pyspark\.sql import functions as F
+      min_count: 1
+      description: Must import pyspark.sql.functions as F
+    - pattern: \.filter\(
+      min_count: 1
+      description: Must use .filter() method
+    - pattern: \.withColumn\(
+      min_count: 1
+      description: Must use .withColumn() for mutate
+    - pattern: \.orderBy\(
+      min_count: 1
+      description: Must use .orderBy() for arrange
+    - pattern: F\.col\(
+      min_count: 1
+      description: Must use F.col() for column references
+    guidelines:
+    - Must use PySpark DataFrame API, not pandas
+    - Must use F.col() style column references
+    - Filter conditions must have parentheses around each condition with & or |
+  metadata:
+    category: happy_path
+    difficulty: easy
+
+- id: r2pyspark_group_summarize_002
+  inputs:
+    prompt: |
+      Convert this R code to PySpark:
+      ```r
+      summary <- orders %>%
+        group_by(department, year) %>%
+        summarize(
+          total_sales = sum(amount, na.rm = TRUE),
+          avg_sales = mean(amount, na.rm = TRUE),
+          num_orders = n(),
+          unique_customers = n_distinct(customer_id),
+          .groups = "drop"
+        )
+      ```
+  outputs:
+    response: |
+      ```python
+      from pyspark.sql import functions as F
+
+      summary = (
+          orders
+          .groupBy("department", "year")
+          .agg(
+              F.sum("amount").alias("total_sales"),
+              F.avg("amount").alias("avg_sales"),
+              F.count("*").alias("num_orders"),
+              F.countDistinct("customer_id").alias("unique_customers"),
+          )
+      )
+
+      display(summary)
+      ```
+    execution_success: true
+  expectations:
+    expected_facts:
+    - group_by maps to groupBy
+    - summarize maps to .agg()
+    - n() maps to F.count("*")
+    - n_distinct maps to F.countDistinct
+    - PySpark ignores nulls by default so na.rm=TRUE is not needed
+    expected_patterns:
+    - pattern: \.groupBy\(
+      min_count: 1
+      description: Must use .groupBy()
+    - pattern: \.agg\(
+      min_count: 1
+      description: Must use .agg() for summarize
+    - pattern: F\.sum\(
+      min_count: 1
+      description: Must use F.sum()
+    - pattern: F\.avg\(
+      min_count: 1
+      description: Must use F.avg() for mean
+    - pattern: F\.count
+      min_count: 1
+      description: Must use F.count for n()
+    - pattern: \.alias\(
+      min_count: 1
+      description: Must use .alias() to name aggregated columns
+    guidelines:
+    - PySpark aggregation functions ignore nulls by default
+    - Must use .alias() to name aggregated columns
+  metadata:
+    category: happy_path
+    difficulty: easy
+
+- id: r2pyspark_join_window_003
+  inputs:
+    prompt: |
+      Convert this R code to PySpark:
+      ```r
+      result <- orders %>%
+        left_join(customers, by = "customer_id") %>%
+        group_by(customer_id) %>%
+        arrange(order_date) %>%
+        mutate(
+          order_rank = row_number(),
+          prev_order_amount = lag(amount, 1)
+        ) %>%
+        ungroup() %>%
+        filter(order_rank <= 5)
+      ```
+  outputs:
+    response: |
+      ```python
+      from pyspark.sql import functions as F
+      from pyspark.sql.window import Window
+
+      w = Window.partitionBy("customer_id").orderBy("order_date")
+
+      result = (
+          orders
+          .join(customers, on="customer_id", how="left")
+          .withColumn("order_rank", F.row_number().over(w))
+          .withColumn("prev_order_amount", F.lag("amount", 1).over(w))
+          .filter(F.col("order_rank") <= 5)
+      )
+
+      display(result)
+      ```
+    execution_success: true
+  expectations:
+    expected_facts:
+    - left_join maps to .join() with how="left"
+    - Grouped mutate with row_number/lag requires Window specification
+    - group_by in window context maps to Window.partitionBy
+    - arrange in window context maps to .orderBy in Window spec
+    expected_patterns:
+    - pattern: Window\.partitionBy
+      min_count: 1
+      description: Must use Window.partitionBy for grouped window ops
+    - pattern: \.join\(
+      min_count: 1
+      description: Must use .join() for left_join
+    - pattern: F\.row_number\(\)\.over
+      min_count: 1
+      description: Must use F.row_number().over(w)
+    - pattern: F\.lag\(
+      min_count: 1
+      description: Must use F.lag() for lag
+    - pattern: from pyspark\.sql\.window import Window
+      min_count: 1
+      description: Must import Window
+    guidelines:
+    - Window functions require explicit Window spec with partitionBy and orderBy
+    - Must import Window from pyspark.sql.window
+  metadata:
+    category: happy_path
+    difficulty: medium
+
+- id: r2pyspark_dataframe_create_004
+  inputs:
+    prompt: |
+      Convert this R code to PySpark:
+      ```r
+      df <- data.frame(
+        id = 1:5,
+        name = c("Alice", "Bob", "Charlie", "Diana", "Eve"),
+        score = c(85.5, 92.0, 78.3, 95.1, 88.7),
+        passed = c(TRUE, TRUE, FALSE, TRUE, TRUE)
+      )
+      ```
+  outputs:
+    response: |
+      ```python
+      from pyspark.sql import functions as F
+
+      df = spark.createDataFrame([
+          (1, "Alice", 85.5, True),
+          (2, "Bob", 92.0, True),
+          (3, "Charlie", 78.3, False),
+          (4, "Diana", 95.1, True),
+          (5, "Eve", 88.7, True),
+      ], schema=["id", "name", "score", "passed"])
+
+      display(df)
+      ```
+    execution_success: true
+  expectations:
+    expected_facts:
+    - data.frame maps to spark.createDataFrame
+    - R vectors become Python lists/tuples
+    - R TRUE/FALSE maps to Python True/False
+    - Column names specified via schema parameter
+    expected_patterns:
+    - pattern: spark\.createDataFrame
+      min_count: 1
+      description: Must use spark.createDataFrame
+    guidelines:
+    - Must use spark.createDataFrame, not pandas DataFrame
+    - R logical TRUE/FALSE must map to Python True/False
+  metadata:
+    category: happy_path
+    difficulty: easy
+
+- id: r2pyspark_read_csv_005
+  inputs:
+    prompt: |
+      Convert this R code to PySpark on Databricks. The CSV file has been uploaded to a Unity Catalog volume.
+      ```r
+      library(readr)
+      sales <- read_csv("data/sales_2024.csv",
+                        col_types = cols(
+                          id = col_integer(),
+                          product = col_character(),
+                          amount = col_double(),
+                          sale_date = col_date()
+                        ))
+      ```
+  outputs:
+    response: |
+      ```python
+      from pyspark.sql.types import StructType, StructField, IntegerType, StringType, DoubleType, DateType
+
+      schema = StructType([
+          StructField("id", IntegerType(), True),
+          StructField("product", StringType(), True),
+          StructField("amount", DoubleType(), True),
+          StructField("sale_date", DateType(), True),
+      ])
+
+      sales = spark.read.csv(
+          "/Volumes/catalog/schema/volume/sales_2024.csv",
+          header=True,
+          schema=schema,
+      )
+
+      display(sales)
+      ```
+    execution_success: true
+  expectations:
+    expected_facts:
+    - read_csv maps to spark.read.csv
+    - col_types with explicit types maps to StructType schema
+    - File path uses /Volumes/ for Unity Catalog volumes
+    - col_integer maps to IntegerType, col_character to StringType, col_double to DoubleType, col_date to DateType
+    expected_patterns:
+    - pattern: spark\.read\.csv
+      min_count: 1
+      description: Must use spark.read.csv
+    - pattern: /Volumes/
+      min_count: 1
+      description: Must use Volumes path for file location
+    - pattern: StructType
+      min_count: 1
+      description: Should define explicit schema
+    guidelines:
+    - Must use Unity Catalog Volume path, not local filesystem
+    - Explicit schema is preferred over inferSchema for production code
+  metadata:
+    category: happy_path
+    difficulty: easy
+
+- id: r2pyspark_ggplot_006
+  inputs:
+    prompt: |
+      Convert this R ggplot2 visualization code to PySpark that works in a Databricks notebook. Use matplotlib as the plotting library.
+      ```r
+      library(ggplot2)
+      ggplot(monthly_revenue, aes(x = month, y = revenue, color = region)) +
+        geom_line(linewidth = 1) +
+        geom_point(size = 3) +
+        labs(title = "Monthly Revenue by Region",
+             x = "Month",
+             y = "Revenue ($)") +
+        theme_minimal()
+      ```
+  outputs:
+    response: |
+      ```python
+      import matplotlib.pyplot as plt
+
+      pdf = monthly_revenue.toPandas()
+
+      fig, ax = plt.subplots(figsize=(12, 6))
+      for region in pdf["region"].unique():
+          region_data = pdf[pdf["region"] == region].sort_values("month")
+          ax.plot(region_data["month"], region_data["revenue"], marker="o", markersize=6, linewidth=1.5, label=region)
+
+      ax.set_title("Monthly Revenue by Region")
+      ax.set_xlabel("Month")
+      ax.set_ylabel("Revenue ($)")
+      ax.legend()
+      ax.grid(True, alpha=0.3)
+      plt.tight_layout()
+      display(fig)
+      ```
+    execution_success: true
+  expectations:
+    expected_facts:
+    - ggplot2 visualization should be converted to matplotlib
+    - The Spark DataFrame must be converted to pandas before plotting
+    - Must use display() to render the plot in a Databricks notebook
+    - geom_line maps to a line plot and geom_point maps to markers
+    - Title and axis labels from labs() must be preserved
+    expected_patterns:
+    - pattern: matplotlib
+      min_count: 1
+      description: Must use matplotlib for visualization
+    - pattern: display\(
+      min_count: 1
+      description: Must use display() for Databricks rendering
+    - pattern: toPandas\(\)
+      min_count: 1
+      description: Must convert DataFrame to pandas for plotting
+    - pattern: plot\(
+      min_count: 1
+      description: Must produce a plot call
+    guidelines:
+    - Must use matplotlib as the plotting library
+    - Must use display() to render in Databricks notebooks, not plt.show()
+    - Must convert Spark DataFrame to pandas with toPandas() before plotting
+    - Must preserve the title and axis labels from the R code
+    - geom_line should map to a line plot, geom_point to markers
+  metadata:
+    category: happy_path
+    difficulty: medium
+
+- id: r2pyspark_stats_007
+  inputs:
+    prompt: |
+      Convert these R statistical operations to PySpark:
+      ```r
+      stats <- df %>%
+        group_by(category) %>%
+        summarize(
+          avg_amount = mean(amount),
+          std_dev = sd(amount),
+          correlation = cor(price, quantity),
+          q95 = quantile(amount, 0.95),
+          median_val = median(amount)
+        )
+      ```
+  outputs:
+    response: |
+      ```python
+      from pyspark.sql import functions as F
+
+      stats = (
+          df
+          .groupBy("category")
+          .agg(
+              F.avg("amount").alias("avg_amount"),
+              F.stddev("amount").alias("std_dev"),
+              F.corr("price", "quantity").alias("correlation"),
+              F.percentile_approx("amount", 0.95).alias("q95"),
+              F.percentile_approx("amount", 0.5).alias("median_val"),
+          )
+      )
+
+      display(stats)
+      ```
+    execution_success: true
+  expectations:
+    expected_facts:
+    - sd() maps to F.stddev()
+    - cor() maps to F.corr()
+    - quantile maps to F.percentile_approx
+    - median maps to F.percentile_approx with 0.5
+    expected_patterns:
+    - pattern: F\.stddev\(
+      min_count: 1
+      description: Must use F.stddev for sd()
+    - pattern: F\.corr\(
+      min_count: 1
+      description: Must use F.corr for cor()
+    - pattern: percentile
+      min_count: 1
+      description: Must use percentile function for quantile/median
+    guidelines:
+    - Must use native PySpark aggregate functions, not UDFs
+    - F.percentile_approx is the standard approach for quantile and median
+  metadata:
+    category: happy_path
+    difficulty: medium
+
+- id: r2pyspark_pivot_008
+  inputs:
+    prompt: |
+      Convert this R tidyr pivot_wider to PySpark:
+      ```r
+      library(tidyr)
+      wide_df <- sales_long %>%
+        pivot_wider(
+          id_cols = c(customer_id, year),
+          names_from = quarter,
+          values_from = revenue,
+          values_fill = 0
+        )
+      ```
+  outputs:
+    response: |
+      ```python
+      from pyspark.sql import functions as F
+
+      wide_df = (
+          sales_long
+          .groupBy("customer_id", "year")
+          .pivot("quarter")
+          .agg(F.first("revenue"))
+          .fillna(0)
+      )
+
+      display(wide_df)
+      ```
+    execution_success: true
+  expectations:
+    expected_facts:
+    - pivot_wider maps to .groupBy().pivot().agg()
+    - id_cols maps to the columns in groupBy
+    - names_from maps to the column in .pivot()
+    - values_fill maps to .fillna()
+    expected_patterns:
+    - pattern: \.pivot\(
+      min_count: 1
+      description: Must use .pivot() for pivot_wider
+    - pattern: \.groupBy\(
+      min_count: 1
+      description: Must use .groupBy() with pivot
+    - pattern: \.fillna\(
+      min_count: 1
+      description: Must use .fillna() for values_fill
+    guidelines:
+    - pivot_wider requires groupBy + pivot + agg pattern in PySpark
+  metadata:
+    category: happy_path
+    difficulty: medium
+
+- id: r2pyspark_apply_udf_009
+  inputs:
+    prompt: |
+      Convert this R code to PySpark. Prefer native PySpark functions over UDFs when possible:
+      ```r
+      df$letter_count <- sapply(df$text, function(x) {
+        nchar(gsub("[^a-zA-Z]", "", x))
+      })
+      ```
+  outputs:
+    response: |
+      ```python
+      from pyspark.sql import functions as F
+
+      df = df.withColumn("letter_count",
+          F.length(F.regexp_replace(F.col("text"), "[^a-zA-Z]", ""))
+      )
+      ```
+    execution_success: true
+  expectations:
+    expected_facts:
+    - This sapply can be done entirely with native PySpark functions
+    - gsub maps to F.regexp_replace
+    - nchar maps to F.length
+    - No UDF is needed for this conversion
+    expected_patterns:
+    - pattern: F\.regexp_replace
+      min_count: 1
+      description: Must use F.regexp_replace for gsub
+    - pattern: F\.length
+      min_count: 1
+      description: Must use F.length for nchar
+    guidelines:
+    - Must prefer native PySpark functions over UDFs when possible
+    - This specific pattern can be done entirely with native functions
+    - Should NOT use @udf or @pandas_udf for this conversion
+  metadata:
+    category: edge_case
+    difficulty: hard
+
+- id: r2pyspark_full_script_010
+  inputs:
+    prompt: |
+      Convert this complete R script to a PySpark Databricks notebook. The data tables are in the catalog `analytics` schema `sales`:
+      ```r
+      library(dplyr)
+      library(lubridate)
+
+      # Read data
+      orders <- read.csv("data/orders.csv")
+      products <- read.csv("data/products.csv")
+
+      # Join and transform
+      report <- orders %>%
+        left_join(products, by = "product_id") %>%
+        filter(order_date >= "2024-01-01") %>%
+        mutate(
+          order_month = floor_date(as.Date(order_date), "month"),
+          revenue = quantity * unit_price,
+          margin = revenue - (quantity * cost)
+        ) %>%
+        group_by(order_month, category) %>%
+        summarize(
+          total_revenue = sum(revenue),
+          total_margin = sum(margin),
+          order_count = n(),
+          avg_order_value = mean(revenue),
+          .groups = "drop"
+        ) %>%
+        arrange(order_month, desc(total_revenue))
+
+      # Write output
+      write.csv(report, "output/monthly_report.csv", row.names = FALSE)
+      ```
+  outputs:
+    response: |
+      ```python
+      from pyspark.sql import functions as F
+
+      # Read from Unity Catalog
+      orders = spark.table("analytics.sales.orders")
+      products = spark.table("analytics.sales.products")
+
+      # Join and transform
+      report = (
+          orders
+          .join(products, on="product_id", how="left")
+          .filter(F.col("order_date") >= "2024-01-01")
+          .withColumn("order_month", F.date_trunc("month", F.col("order_date")))
+          .withColumn("revenue", F.col("quantity") * F.col("unit_price"))
+          .withColumn("margin", F.col("revenue") - (F.col("quantity") * F.col("cost")))
+          .groupBy("order_month", "category")
+          .agg(
+              F.sum("revenue").alias("total_revenue"),
+              F.sum("margin").alias("total_margin"),
+              F.count("*").alias("order_count"),
+              F.avg("revenue").alias("avg_order_value"),
+          )
+          .orderBy("order_month", F.col("total_revenue").desc())
+      )
+
+      # Write as Delta table
+      report.write.mode("overwrite").saveAsTable("analytics.sales.monthly_report")
+
+      display(report)
+      ```
+    execution_success: true
+  expectations:
+    expected_facts:
+    - read.csv maps to spark.table with Unity Catalog path
+    - floor_date maps to F.date_trunc
+    - Output uses Delta table via saveAsTable instead of write.csv
+    - Uses 3-level namespace analytics.sales for all table references
+    - Complete pipeline preserves all transformation logic
+    expected_patterns:
+    - pattern: from pyspark\.sql import functions as F
+      min_count: 1
+      description: Must import F
+    - pattern: spark\.table\(
+      min_count: 2
+      description: Must read from Unity Catalog tables
+    - pattern: analytics\.sales\.
+      min_count: 2
+      description: Must use the specified catalog.schema namespace
+    - pattern: \.saveAsTable\(
+      min_count: 1
+      description: Must write as Delta table
+    - pattern: F\.date_trunc
+      min_count: 1
+      description: Must use F.date_trunc for floor_date
+    - pattern: display\(
+      min_count: 1
+      description: Must use display() for notebook output
+    guidelines:
+    - Must use Unity Catalog tables, not CSV files
+    - Must use Delta format for output via saveAsTable
+    - Must use the analytics.sales namespace as specified
+    - Must preserve all transformation logic from the R script
+  metadata:
+    category: end_to_end
+    difficulty: hard
+
+- id: r2pyspark_case_when_011
+  inputs:
+    prompt: |
+      Convert this R case_when to PySpark:
+      ```r
+      df <- df %>%
+        mutate(
+          tier = case_when(
+            revenue >= 1000000 ~ "enterprise",
+            revenue >= 100000  ~ "mid_market",
+            revenue >= 10000   ~ "smb",
+            TRUE               ~ "starter"
+          ),
+          status_label = case_when(
+            status == "A" ~ "Active",
+            status == "I" ~ "Inactive",
+            status == "P" ~ "Pending",
+            TRUE          ~ "Unknown"
+          )
+        )
+      ```
+  outputs:
+    response: |
+      ```python
+      from pyspark.sql import functions as F
+
+      df = (
+          df
+          .withColumn("tier",
+              F.when(F.col("revenue") >= 1000000, "enterprise")
+               .when(F.col("revenue") >= 100000, "mid_market")
+               .when(F.col("revenue") >= 10000, "smb")
+               .otherwise("starter")
+          )
+          .withColumn("status_label",
+              F.when(F.col("status") == "A", "Active")
+               .when(F.col("status") == "I", "Inactive")
+               .when(F.col("status") == "P", "Pending")
+               .otherwise("Unknown")
+          )
+      )
+      ```
+    execution_success: true
+  expectations:
+    expected_facts:
+    - case_when maps to F.when().when().otherwise()
+    - R's TRUE ~ default maps to .otherwise()
+    - Each condition maps to a .when() call
+    - Multiple case_when in one mutate maps to multiple withColumn calls
+    expected_patterns:
+    - pattern: F\.when\(
+      min_count: 2
+      description: Must use F.when() for case_when
+    - pattern: \.otherwise\(
+      min_count: 2
+      description: Must use .otherwise() for TRUE ~ default
+    - pattern: \.withColumn\(
+      min_count: 2
+      description: Must use withColumn for each mutated column
+    guidelines:
+    - TRUE ~ value in case_when must map to .otherwise()
+    - Conditions are evaluated in order, same as R
+  metadata:
+    category: happy_path
+    difficulty: easy
+
+- id: r2pyspark_lubridate_012
+  inputs:
+    prompt: |
+      Convert these R lubridate operations to PySpark:
+      ```r
+      library(lubridate)
+      df <- df %>%
+        mutate(
+          parsed_date = ymd(date_string),
+          order_year = year(order_date),
+          order_month = month(order_date),
+          month_start = floor_date(order_date, "month"),
+          days_ago = as.numeric(difftime(today(), order_date, units = "days")),
+          next_quarter = order_date + months(3),
+          formatted = format(order_date, "%B %Y")
+        )
+      ```
+  outputs:
+    response: |
+      ```python
+      from pyspark.sql import functions as F
+
+      df = (
+          df
+          .withColumn("parsed_date", F.to_date("date_string", "yyyy-MM-dd"))
+          .withColumn("order_year", F.year("order_date"))
+          .withColumn("order_month", F.month("order_date"))
+          .withColumn("month_start", F.date_trunc("month", F.col("order_date")))
+          .withColumn("days_ago", F.datediff(F.current_date(), F.col("order_date")))
+          .withColumn("next_quarter", F.add_months(F.col("order_date"), 3))
+          .withColumn("formatted", F.date_format(F.col("order_date"), "MMMM yyyy"))
+      )
+
+      display(df)
+      ```
+    execution_success: true
+  expectations:
+    expected_facts:
+    - ymd maps to F.to_date with yyyy-MM-dd format
+    - year() maps to F.year()
+    - month() maps to F.month()
+    - floor_date maps to F.date_trunc
+    - difftime with days maps to F.datediff
+    - months(3) addition maps to F.add_months
+    - format uses Java date format strings (MMMM not %B)
+    expected_patterns:
+    - pattern: F\.to_date
+      min_count: 1
+      description: Must use F.to_date for ymd
+    - pattern: F\.year\(
+      min_count: 1
+      description: Must use F.year()
+    - pattern: F\.date_trunc
+      min_count: 1
+      description: Must use F.date_trunc for floor_date
+    - pattern: F\.datediff
+      min_count: 1
+      description: Must use F.datediff for difftime
+    - pattern: F\.add_months
+      min_count: 1
+      description: Must use F.add_months for date addition
+    - pattern: F\.date_format
+      min_count: 1
+      description: Must use F.date_format for format()
+    guidelines:
+    - Date format strings use Java patterns (yyyy-MM-dd), not R patterns (%Y-%m-%d)
+    - Must use F.current_date() instead of today()
+  metadata:
+    category: happy_path
+    difficulty: medium
